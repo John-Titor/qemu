@@ -5,6 +5,17 @@ config AN5206
     select COLDFIRE
     select PTIMER
 
+config ATARIST
+    bool
+    select M68K_IRQC
+    select VIRT_CTRL
+    select GOLDFISH_PIC
+    select GOLDFISH_TTY
+    select GOLDFISH_RTC
+    select VIRTIO_MMIO
+    select ATARISTFB
+    select IDE_MMIO
+
 config MCF5208
     bool
     default y

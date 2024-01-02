@@ -136,6 +136,10 @@ config MACFB
     select FRAMEBUFFER
     depends on NUBUS
 
+config ATARISTFB
+    bool
+    select FRAMEBUFFER
+
 config XLNX_DISPLAYPORT
     bool
     # defaults to "N", enabled by specific boards
