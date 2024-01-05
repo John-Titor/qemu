@@ -80,7 +80,6 @@ static void kbd_do_reset(KBDState *s)
     s->dx = 0;
     s->dy = 0;
     s->reset_pending = false;
-    s->ctrl_reg = 0;
     kbd_update_interrupt(s);
 }
 
@@ -429,7 +428,7 @@ static void kbd_realize(DeviceState *dev, Error **errp)
 
     fifo8_create(&s->fifo, 256);
 
-    memory_region_init_io(&s->mr, OBJECT(dev), &kbd_ops, s, "atarist.kbd", 0x1000);
+    memory_region_init_io(&s->mr, OBJECT(dev), &kbd_ops, s, "atarist.kbd", 0x4);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr);
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
 
@@ -449,6 +448,7 @@ static void kbd_class_init(ObjectClass *oc, void *data)
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd = &kbd_vmstate;
     dc->realize = kbd_realize;
+    dc->desc = "AtariST IKBD";
     dc->reset = kbd_reset;
 }
 
