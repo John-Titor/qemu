@@ -12,6 +12,7 @@
 #include "hw/irq.h"
 #include "hw/m68k/atarist.h"
 #include "hw/qdev-properties.h"
+#include "sysemu/rtc.h"
 #include "ui/console.h"
 #include "migration/vmstate.h"
 #include "qom/object.h"
@@ -83,6 +84,29 @@ static void kbd_do_reset(KBDState *s)
     kbd_update_interrupt(s);
 }
 
+static uint8_t to_bcd(uint8_t b)
+{
+    return ((b / 10) << 4) + (b % 10);
+}
+
+static void kbd_report_time(KBDState *s)
+{
+    struct tm tm;
+
+    if (fifo8_num_free(&s->fifo) >= 7) {
+        qemu_get_timedate(&tm, 0);
+        fifo8_push(&s->fifo, 0xfc);
+        fifo8_push(&s->fifo, to_bcd(tm.tm_year % 100));
+        fifo8_push(&s->fifo, to_bcd(tm.tm_mon + 1));
+        fifo8_push(&s->fifo, to_bcd(tm.tm_mday));
+        fifo8_push(&s->fifo, to_bcd(tm.tm_hour));
+        fifo8_push(&s->fifo, to_bcd(tm.tm_min));
+        fifo8_push(&s->fifo, to_bcd(tm.tm_sec));
+
+        kbd_update_interrupt(s);
+    }
+}
+
 static uint64_t kbd_readfn(void *opaque, hwaddr addr, unsigned size)
 {
     KBDState *s = ATARISTKBD(opaque);
@@ -108,7 +132,6 @@ static uint64_t kbd_readfn(void *opaque, hwaddr addr, unsigned size)
 
 static void kbd_cmd(KBDState *s, uint8_t cmd)
 {
-    qemu_log("ikbd: cmd 0x%02x\n", cmd);
     switch (cmd) {
     case CMD_RESET1:
         s->reset_pending = true;
@@ -130,6 +153,8 @@ static void kbd_cmd(KBDState *s, uint8_t cmd)
     case CMD_SET_RELATIVE:
         s->mouse_disabled = false;
         break;
+    case CMD_GET_TIME:
+        kbd_report_time(s);
     }
 }
 

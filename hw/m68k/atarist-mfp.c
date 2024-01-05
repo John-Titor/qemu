@@ -120,8 +120,8 @@ static uint64_t mfp_read(void *opaque, hwaddr addr, unsigned int size)
 
 static void mfp_update_irq(MFPState *s)
 {
-    if ((s->regs[MFP_REG_IMRA] & s->regs[MFP_REG_IPRA]) ||  /* Timer A/B? */
-        (s->regs[MFP_REG_IMRB] & s->regs[MFP_REG_IPRB])) {  /* Timer C? */
+    if ((s->regs[MFP_REG_IMRA] & s->regs[MFP_REG_IPRA]) ||
+        (s->regs[MFP_REG_IMRB] & s->regs[MFP_REG_IPRB])) {
         qemu_irq_raise(s->irq);
     } else {
         qemu_irq_lower(s->irq);
@@ -233,11 +233,12 @@ static void mfp_gpip_irq(void *opaque, int irq, int level)
         mask_a |= IRA_GPIP_7;
         break;
     }
-    qemu_log("mfp: int %d:%d\n", irq, level);
     if (level) {
-        s->regs[MFP_REG_IPRA] |= mask_a & s->regs[MFP_REG_IERA];
-        s->regs[MFP_REG_IPRB] |= mask_b & s->regs[MFP_REG_IERB];
+        s->regs[MFP_REG_GPDR] &= ~(1 << irq);
+        s->regs[MFP_REG_IPRA] |= (mask_a & s->regs[MFP_REG_IERA]);
+        s->regs[MFP_REG_IPRB] |= (mask_b & s->regs[MFP_REG_IERB]);
     } else {
+        s->regs[MFP_REG_GPDR] |= (1 << irq);
         s->regs[MFP_REG_IPRA] &= ~mask_a;
         s->regs[MFP_REG_IPRB] &= ~mask_b;
     }
@@ -254,7 +255,6 @@ static void mfp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size
     addr >>= 1;
 
     switch(addr) {
-    case MFP_REG_GPDR:
     case MFP_REG_AER:
     case MFP_REG_DDR:
     case MFP_REG_VR:
@@ -306,6 +306,7 @@ static void mfp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size
         mfp_reset_timer_cd(s);
         break;
 
+    case MFP_REG_GPDR:
     case MFP_REG_RSR:
     case MFP_REG_TSR:
     case MFP_REG_UDR:
