@@ -42,21 +42,24 @@
 
 #define ATARI_ROM_BASE      0x00e00000
 
-#define ATARI_MFP_BASE      0xfffffa00
+#define ATARI_MFP_BASE      0xfffffa00  /* MFP emulator */
 #define ATARI_MFP_IRQ_LEVEL 6
-#define ATARI_IKBD_BASE     0xfffffc00
+
+#define ATARI_IKBD_BASE     0xfffffc00  /* IKBD emulator */
 #define ATARI_IKBD_MFP_IRQ  4           /* GPIP 4 -> MFP irq 6 */
-#define ATARI_IDE_BASE      0xfff00000
+
+#define ATARI_IDE_BASE      0xfff00000  /* Falcon IDE address */
 #define ATARI_IDE_OFFSET    0x10        /* alt status reg offset */
 #define ATARI_IDE_STRIDE    0x20
 #define ATARI_IDE_COUNT     2           /* 2 controllers */
+/* XXX TODO - set shift to 4 and use standard Falcon settings */
+
+#define ATARI_FB_REGS_BASE  0xffffc000  /* framebuffer */
+#define ATARI_FB_PAL_BASE   0xffffc400
+#define ATARI_FB_IRQ_LEVEL  3           /* VBL shim */
 
 #define GF_TTY_BASE         0xffffb400  /* logging pipe */
 #define VIRT_CTRL_BASE      0xffffb500  /* system control */
-
-#define ATARI_FB_REGS_BASE  0xffffc000  /* WIP framebuffer */
-#define ATARI_FB_MEM_BASE   0xff800000
-#define ATARI_FB_IRQ_LEVEL  4
 
 typedef struct {
     M68kCPU *cpu;
@@ -84,7 +87,7 @@ static void virt_init(MachineState *machine)
     const char      *rom_filename = machine->kernel_filename;
     hwaddr          io_base;
 
-    /* needs to cover ROM space for ... reasons */
+    /* needs to cover ROM space? */
     if (machine->ram_size < (15 * MiB)) {
         error_report("memory size must be at least 15M");
         exit(1);
@@ -121,16 +124,6 @@ static void virt_init(MachineState *machine)
     /* IKBD */
     sysbus_create_simple(TYPE_ATARISTKBD, ATARI_IKBD_BASE, qdev_get_gpio_in(mfp_dev, ATARI_IKBD_MFP_IRQ));
 
-    /* goldfish-tty for console logging, output only */
-    dev = qdev_new(TYPE_GOLDFISH_TTY);
-    sysbus = SYS_BUS_DEVICE(dev);
-    qdev_prop_set_chr(dev, "chardev", serial_hd(0));
-    sysbus_realize_and_unref(sysbus, &error_fatal);
-    sysbus_mmio_map(sysbus, 0, GF_TTY_BASE);
-
-    /* virt controller */
-    sysbus_create_simple(TYPE_VIRT_CTRL, VIRT_CTRL_BASE, 0);
-
     /* IDE */
     io_base = ATARI_IDE_BASE;
     for (int i = 0; i < ATARI_IDE_COUNT; i++, io_base += ATARI_IDE_STRIDE) {
@@ -150,7 +143,17 @@ static void virt_init(MachineState *machine)
     sysbus_realize_and_unref(sysbus, &error_fatal);
     sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(irqc_dev, ATARI_FB_IRQ_LEVEL - 1));
     sysbus_mmio_map(sysbus, 0, ATARI_FB_REGS_BASE);
-    sysbus_mmio_map(sysbus, 1, ATARI_FB_MEM_BASE);
+    sysbus_mmio_map(sysbus, 1, ATARI_FB_PAL_BASE);
+
+    /* goldfish-tty for console logging, output only */
+    dev = qdev_new(TYPE_GOLDFISH_TTY);
+    sysbus = SYS_BUS_DEVICE(dev);
+    qdev_prop_set_chr(dev, "chardev", serial_hd(0));
+    sysbus_realize_and_unref(sysbus, &error_fatal);
+    sysbus_mmio_map(sysbus, 0, GF_TTY_BASE);
+
+    /* virt controller */
+    sysbus_create_simple(TYPE_VIRT_CTRL, VIRT_CTRL_BASE, 0);
 }
 
 static void virt_machine_class_init(ObjectClass *oc, void *data)
