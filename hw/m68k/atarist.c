@@ -54,9 +54,9 @@
 #define GF_TTY_BASE         0xffffb400  /* logging pipe */
 #define VIRT_CTRL_BASE      0xffffb500  /* system control */
 
-#define FB_REGS_BASE        0xffffc000  /* WIP framebuffer */
-#define FB_MEM_BASE         0xff800000
-#define FB_IRQ_LEVEL        4
+#define ATARI_FB_REGS_BASE  0xffffc000  /* WIP framebuffer */
+#define ATARI_FB_MEM_BASE   0xff800000
+#define ATARI_FB_IRQ_LEVEL  4
 
 typedef struct {
     M68kCPU *cpu;
@@ -148,9 +148,9 @@ static void virt_init(MachineState *machine)
     dev = qdev_new(TYPE_ATARISTFB);
     sysbus = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(sysbus, &error_fatal);
-    sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(irqc_dev, FB_IRQ_LEVEL - 1));
-    sysbus_mmio_map(sysbus, 0, FB_REGS_BASE);
-    sysbus_mmio_map(sysbus, 1, FB_MEM_BASE);
+    sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(irqc_dev, ATARI_FB_IRQ_LEVEL - 1));
+    sysbus_mmio_map(sysbus, 0, ATARI_FB_REGS_BASE);
+    sysbus_mmio_map(sysbus, 1, ATARI_FB_MEM_BASE);
 }
 
 static void virt_machine_class_init(ObjectClass *oc, void *data)

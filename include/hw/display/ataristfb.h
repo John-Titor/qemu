@@ -19,42 +19,50 @@
 #include "ui/console.h"
 #include "qemu/timer.h"
 
-typedef struct AtariFbMode {
-    uint8_t depth;
-    uint32_t width;
-    uint32_t height;
-    uint32_t stride;
-} AtariFbMode;
-
-#define ATARISTFB_CTRL_TOPADDR  0x200
-#define ATARISTFB_NUM_REGS      (ATARISTFB_CTRL_TOPADDR / sizeof(uint32_t))
-
-typedef struct AtarifbState {
-    MemoryRegion mem_vram;
-    MemoryRegion mem_ctrl;
-    QemuConsole *con;
-
-    uint8_t *vram;
-    uint32_t vram_bit_mask;
-    uint32_t palette_current;
-    uint8_t color_palette[256 * 3];
-    uint32_t width, height; /* in pixels */
-    uint8_t depth;
-
-    uint32_t regs[ATARISTFB_NUM_REGS];
-    AtariFbMode *mode;
-
-    QEMUTimer *vbl_timer;
-    qemu_irq irq;
-} AtarifbState;
-
-#define TYPE_ATARISTFB "sysbus-atarifb"
-OBJECT_DECLARE_SIMPLE_TYPE(AtarifbSysBusState, ATARISTFB)
-
-struct AtarifbSysBusState {
-    SysBusDevice busdev;
-
-    AtarifbState atarifb;
+enum {
+    REG_VBL_ACK,
+    REG_VBL_CTRL,
+    REG_MODE,
+    REG_DEPTH,
+    REG_WIDTH,
+    REG_HEIGHT,
+    REG_VADDR,
+    REG_PALETTE_BASE = 0x40
 };
+
+#define ATARISTFB_NUM_REGS      REG_PALETTE_BASE
+#define ATARISTFB_PALETTE_SIZE  0x100
+
+#define TYPE_ATARISTFB "ataristfb"
+OBJECT_DECLARE_SIMPLE_TYPE(AtariSTFBState, ATARISTFB)
+
+struct AtariSTFBState {
+    SysBusDevice busdev;
+    MemoryRegion    mem_vram;
+    MemoryRegion    mem_regs;
+    QemuConsole     *con;
+
+    uint8_t         *vram;
+//    uint32_t        vram_bit_mask;
+
+    uint32_t        regs[ATARISTFB_NUM_REGS];
+    uint32_t        palette[ATARISTFB_PALETTE_SIZE];
+    int             mode;
+
+    QEMUTimer       *vbl_timer;
+    uint64_t        next_vbl;
+    qemu_irq        irq;
+};
+
+typedef void ataristfb_draw_func(AtariSTFBState *s, uint32_t *d, uint32_t addr, int width);
+
+typedef struct {
+    uint8_t         depth;
+    uint32_t        width;
+    uint32_t        height;
+    uint32_t        stride;
+    const uint32_t  *default_palette;
+    ataristfb_draw_func *draw_fn;
+} AtariSTFBMode;
 
 #endif
