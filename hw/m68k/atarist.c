@@ -25,6 +25,7 @@
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
 #include "hw/loader.h"
+#include "hw/pci-host/gpex.h"
 #include "ui/console.h"
 #include "hw/sysbus.h"
 #include "qapi/error.h"
@@ -40,10 +41,32 @@
 #include "hw/m68k/atarist.h"
 #include "hw/ide/mmio.h"
 
+/*
+ * System memory map
+ *
+ * 0x0000_0000-0x8000_0000  2G RAM
+ * 0xd000_0000-0xfe00_0000  PCIe MMIO space
+ * 0xfe00_0000-0xff00_0000  PCIe ECAM space
+ * 0xff00_0000-0xff01_0000  PCIe IO space
+ * 0xfff0_0000-0xfff0_007f  Falcon IDE controllers
+ * 0xffff_b400-0xffff_b43f  Goldfish TTY device
+ * 0xffff_b500-0xffff_b50f  Virt control device
+ * 0xffff_c000-0xffff_c3ff  Framebuffer control registers
+ * 0xffff_c400-0xffff_c4ff  Framebuffer palette registers
+ * 0xffff_fc00-0xffff_ffc3  IKBD
+ */
+
 #define ATARI_ROM_BASE      0x00e00000
 
 #define ATARI_MFP_BASE      0xfffffa00  /* MFP emulator */
 #define ATARI_MFP_IRQ_LEVEL 6
+
+#define ATARI_PCI_MMIO_BASE 0xd0000000
+#define ATARI_PCI_MMIO_SIZE 0x1fd00000
+#define ATARI_PCI_ECAM_BASE 0xffd00000
+#define ATARI_PCI_ECAM_SIZE 0x00100000  /* 1 bus, 32 devices, 8 functions */
+#define ATARI_PCI_IO_BASE   0xffe00000
+#define ATARI_PCI_IRQ_LEVEL 5
 
 #define ATARI_IKBD_BASE     0xfffffc00  /* IKBD emulator */
 #define ATARI_IKBD_MFP_IRQ  4           /* GPIP 4 -> MFP irq 6 */
@@ -74,6 +97,49 @@ static void main_cpu_reset(void *opaque)
 
     cpu_reset(cs);
     cpu->env.pc = reset_info->initial_pc;
+}
+
+static void create_pci(DeviceState *irqc)
+{
+    DeviceState *dev;
+    MemoryRegion *mmio_alias;
+    MemoryRegion *mmio_reg;
+    MemoryRegion *ecam_alias;
+    MemoryRegion *ecam_reg;
+    int i;
+
+    /* PCIe host bridge */
+    dev = qdev_new(TYPE_GPEX_HOST);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+
+    /* map a limited ECAM since we only have one bus */
+    ecam_alias = g_new0(MemoryRegion, 1);
+    ecam_reg = sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 0);
+    memory_region_init_alias(ecam_alias, OBJECT(dev), "pcie-ecam",
+                             ecam_reg, 0, ATARI_PCI_ECAM_SIZE);
+    memory_region_add_subregion(get_system_memory(), ATARI_PCI_ECAM_BASE, ecam_alias);
+
+    /*
+     * Map the PCI window 1:1, i.e. host address maps directly to bus address.
+     */
+    mmio_alias = g_new0(MemoryRegion, 1);
+    mmio_reg = sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 1);
+    memory_region_init_alias(mmio_alias, OBJECT(dev), "pcie-mmio",
+                             mmio_reg, ATARI_PCI_MMIO_BASE, ATARI_PCI_MMIO_SIZE);
+    memory_region_add_subregion(get_system_memory(), ATARI_PCI_MMIO_BASE, mmio_alias);
+
+    /*
+     * Map I/O port space.
+     */
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 2, ATARI_PCI_IO_BASE);
+
+    /*
+     * Wire all PCI interrupts to level 5.
+     */
+    for (i = 0; i < GPEX_NUM_IRQS; i++) {
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), i, qdev_get_gpio_in(irqc, ATARI_MFP_IRQ_LEVEL - 1));
+        gpex_set_irq_num(GPEX_HOST(dev), i, 5); /* not clear what this gets used for... */
+    }
 }
 
 static void virt_init(MachineState *machine)
@@ -154,6 +220,9 @@ static void virt_init(MachineState *machine)
 
     /* virt controller */
     sysbus_create_simple(TYPE_VIRT_CTRL, VIRT_CTRL_BASE, 0);
+
+    /* PCI bus */
+    create_pci(irqc_dev);
 }
 
 static void virt_machine_class_init(ObjectClass *oc, void *data)

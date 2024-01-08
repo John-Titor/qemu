@@ -7,14 +7,14 @@ config AN5206
 
 config ATARIST
     bool
+    imply PCI_DEVICES
     select M68K_IRQC
     select VIRT_CTRL
-    select GOLDFISH_PIC
     select GOLDFISH_TTY
-    select GOLDFISH_RTC
-    select VIRTIO_MMIO
     select ATARISTFB
     select IDE_MMIO
+    select PCI
+    select PCI_EXPRESS_GENERIC_BRIDGE
 
 config MCF5208
     bool
