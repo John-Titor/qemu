@@ -71,11 +71,10 @@
 #define ATARI_IKBD_BASE     0xfffffc00  /* IKBD emulator */
 #define ATARI_IKBD_MFP_IRQ  4           /* GPIP 4 -> MFP irq 6 */
 
-#define ATARI_IDE_BASE      0xfff00000  /* Falcon IDE address */
-#define ATARI_IDE_OFFSET    0x10        /* alt status reg offset */
-#define ATARI_IDE_STRIDE    0x20
-#define ATARI_IDE_COUNT     2           /* 2 controllers */
-/* XXX TODO - set shift to 4 and use standard Falcon settings */
+#define ATARI_IDE_BASE      0xfff00000  /* Falcon IDE address and layout */
+#define ATARI_IDE_OFFSET    0x38
+#define ATARI_IDE_STRIDE    0x40
+#define ATARI_IDE_COUNT     2
 
 #define ATARI_FB_REGS_BASE  0xffffc000  /* framebuffer */
 #define ATARI_FB_PAL_BASE   0xffffc400
@@ -196,7 +195,7 @@ static void virt_init(MachineState *machine)
         dev = qdev_new(TYPE_MMIO_IDE);
         sysbus = SYS_BUS_DEVICE(dev);
         /* sysbus_connect_irq(sysbus, 0, XXX + i)); - no interrupt? */
-        qdev_prop_set_uint32(dev, "shift", 1);
+        qdev_prop_set_uint32(dev, "shift", 2);
         sysbus_realize_and_unref(sysbus, &error_fatal);
         sysbus_mmio_map(sysbus, 0, io_base);
         sysbus_mmio_map(sysbus, 1, io_base + ATARI_IDE_OFFSET);
