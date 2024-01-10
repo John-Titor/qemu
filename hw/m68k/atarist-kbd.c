@@ -77,7 +77,7 @@ static void kbd_update_interrupt(KBDState *s)
 static void kbd_do_reset(KBDState *s)
 {
     fifo8_reset(&s->fifo);
-    s->buttons = 3;
+    s->buttons = 0;
     s->dx = 0;
     s->dy = 0;
     s->reset_pending = false;
