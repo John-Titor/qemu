@@ -6,6 +6,9 @@
  * on the Atari side needs to handle vectoring.
  *
  * GPIP and USART operations are ignored.
+ *
+ * An additional 16 interrupts and corresponding IER/IPR/ISR/IMR
+ * registers are implemented to support the ISA bus.
  */
 
 #include "qemu/osdep.h"
@@ -47,7 +50,18 @@ enum {
     MFP_REG_UCR,
     MFP_REG_RSR,
     MFP_REG_TSR,
-    MFP_REG_UDR
+    MFP_REG_UDR,
+
+    /* extended MFP interrupt registers */
+    MFP_REG_IERC,
+    MFP_REG_IERD,
+    MFP_REG_IPRC,
+    MFP_REG_IPRD,
+    MFP_REG_ISRC,
+    MFP_REG_ISRD,
+    MFP_REG_IMRC,
+    MFP_REG_IMRD,
+    MFP_REG_MAX
 };
 
 #define IRA_TIMER_B  (1<<0)
@@ -68,7 +82,7 @@ struct MFPState {
     qemu_irq        irq;
 
     uint32_t        clock;
-    uint8_t         regs[24];
+    uint8_t         regs[MFP_REG_MAX];
 
     QEMUTimer       *timer_a;
     QEMUTimer       *timer_b;
@@ -87,41 +101,23 @@ static uint64_t mfp_read(void *opaque, hwaddr addr, unsigned int size)
     addr >>= 1;
 
     switch(addr) {
-    case MFP_REG_GPDR:
-    case MFP_REG_AER:
-    case MFP_REG_DDR:
-    case MFP_REG_VR:
-    case MFP_REG_SCR:
-    case MFP_REG_UCR:
-    case MFP_REG_IERA:
-    case MFP_REG_IERB:
-    case MFP_REG_IMRA:
-    case MFP_REG_IMRB:
-    case MFP_REG_IPRA:
-    case MFP_REG_IPRB:
-    case MFP_REG_ISRA:
-    case MFP_REG_ISRB:
-    case MFP_REG_TACR:
-    case MFP_REG_TBCR:
-    case MFP_REG_TCDCR:
-    case MFP_REG_TADR:
-    case MFP_REG_TBDR:
-    case MFP_REG_TCDR:
-    case MFP_REG_TDDR:
-        return s->regs[addr];
-
     case MFP_REG_RSR:
     case MFP_REG_TSR:
     case MFP_REG_UDR:
         break;
+    default:
+        return s->regs[addr];
     }
-    return 0x00;
+
+    return 0;
 }
 
 static void mfp_update_irq(MFPState *s)
 {
     if ((s->regs[MFP_REG_IMRA] & s->regs[MFP_REG_IPRA]) ||
-        (s->regs[MFP_REG_IMRB] & s->regs[MFP_REG_IPRB])) {
+        (s->regs[MFP_REG_IMRB] & s->regs[MFP_REG_IPRB]) ||
+        (s->regs[MFP_REG_IMRC] & s->regs[MFP_REG_IPRC]) ||
+        (s->regs[MFP_REG_IMRD] & s->regs[MFP_REG_IPRD])) {
         qemu_irq_raise(s->irq);
     } else {
         qemu_irq_lower(s->irq);
@@ -207,6 +203,8 @@ static void mfp_gpip_irq(void *opaque, int irq, int level)
 
     uint8_t mask_a = 0;
     uint8_t mask_b = 0;
+    uint8_t mask_c = 0;
+    uint8_t mask_d = 0;
     switch (irq) {
     case 0:
         mask_b |= IRB_GPIP_0;
@@ -232,15 +230,25 @@ static void mfp_gpip_irq(void *opaque, int irq, int level)
     case 7:
         mask_a |= IRA_GPIP_7;
         break;
+    case 8 ... 15:
+        mask_c |= (irq - 8);
+        break;
+    case 16 ... 23:
+        mask_d |= (irq - 16);
+        break;
     }
     if (level) {
         s->regs[MFP_REG_GPDR] &= ~(1 << irq);
         s->regs[MFP_REG_IPRA] |= (mask_a & s->regs[MFP_REG_IERA]);
         s->regs[MFP_REG_IPRB] |= (mask_b & s->regs[MFP_REG_IERB]);
+        s->regs[MFP_REG_IPRC] |= (mask_c & s->regs[MFP_REG_IERC]);
+        s->regs[MFP_REG_IPRD] |= (mask_d & s->regs[MFP_REG_IERD]);
     } else {
         s->regs[MFP_REG_GPDR] |= (1 << irq);
         s->regs[MFP_REG_IPRA] &= ~mask_a;
         s->regs[MFP_REG_IPRB] &= ~mask_b;
+        s->regs[MFP_REG_IPRC] &= ~mask_c;
+        s->regs[MFP_REG_IPRD] &= ~mask_d;
     }
     mfp_update_irq(s);
 }
@@ -271,18 +279,24 @@ static void mfp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size
     case MFP_REG_IERB:
     case MFP_REG_IMRA:
     case MFP_REG_IMRB:
+    case MFP_REG_IERC:
+    case MFP_REG_IERD:
+    case MFP_REG_IMRC:
+    case MFP_REG_IMRD:
         s->regs[addr] = val;
         mfp_update_irq(s);
         break;
 
         /*
-         * To allow for vectoring emulation, we make IPRx w0c and set IPRx for the corresponding
+         * To allow for vectoring emulation, we make IPRx w0c and set ISRx for the corresponding
          * interrupt. Confusing things may happen if more than one zero is written to IPRx.
          */
     case MFP_REG_IPRA:
     case MFP_REG_IPRB:
+    case MFP_REG_IPRC:
+    case MFP_REG_IPRD:
         if ((val & s->regs[addr]) != s->regs[addr]) {
-            s->regs[addr + 2] |= ~val;
+            s->regs[addr + 2] |= ~val;      /* assumes ordering of IPRx / ISRx registers */
         }
         s->regs[addr] &= val;
         mfp_update_irq(s);
@@ -290,6 +304,8 @@ static void mfp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size
 
     case MFP_REG_ISRA:
     case MFP_REG_ISRB:
+    case MFP_REG_ISRC:
+    case MFP_REG_ISRD:
         s->regs[addr] &= val;
         break;
 
@@ -353,7 +369,7 @@ static void mfp_instance_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr);
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
 
-    qdev_init_gpio_in(DEVICE(obj), mfp_gpip_irq, 8);
+    qdev_init_gpio_in(DEVICE(obj), mfp_gpip_irq, 24);
 }
 
 static Property mfp_properties[] = {

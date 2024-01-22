@@ -15,6 +15,7 @@ config ATARIST
     select IDE_MMIO
     select PCI
     select PCI_EXPRESS_GENERIC_BRIDGE
+    select ISA_BUS
 
 config MCF5208
     bool

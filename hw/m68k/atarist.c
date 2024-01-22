@@ -26,6 +26,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/loader.h"
 #include "hw/pci-host/gpex.h"
+#include "hw/isa/isa.h"
 #include "ui/console.h"
 #include "hw/sysbus.h"
 #include "qapi/error.h"
@@ -33,7 +34,6 @@
 #include "sysemu/qtest.h"
 #include "sysemu/runstate.h"
 #include "sysemu/reset.h"
-
 #include "hw/intc/m68k_irqc.h"
 #include "hw/misc/virt_ctrl.h"
 #include "hw/char/goldfish_tty.h"
@@ -59,26 +59,30 @@
 #define ATARI_ROM_BASE      0x00e00000
 
 #define ATARI_MFP_BASE      0xfffffa00  /* MFP emulator */
-#define ATARI_MFP_IRQ_LEVEL 6
+#define ATARI_MFP_IRQ_LEVEL 6           /* same priority as the stock MFP */
 
 #define ATARI_PCI_MMIO_BASE 0xd0000000
-#define ATARI_PCI_MMIO_SIZE 0x1fd00000
+#define ATARI_PCI_MMIO_SIZE 0x1fc00000
 #define ATARI_PCI_ECAM_BASE 0xffd00000
 #define ATARI_PCI_ECAM_SIZE 0x00100000  /* 1 bus, 32 devices, 8 functions */
 #define ATARI_PCI_IO_BASE   0xffe00000
-#define ATARI_PCI_IRQ_LEVEL 5
+#define ATARI_PCI_IRQ_LEVEL 5           /* level 5 */
 
 #define ATARI_IKBD_BASE     0xfffffc00  /* IKBD emulator */
 #define ATARI_IKBD_MFP_IRQ  4           /* GPIP 4 -> MFP irq 6 */
+
+#define ATARI_FB_REGS_BASE  0xffffc000  /* framebuffer */
+#define ATARI_FB_PAL_BASE   0xffffc400
+#define ATARI_FB_IRQ_LEVEL  3           /* VBL shim, uses level 4 vector as well */
+
+#define ATARI_ISA_MMIO_BASE 0xefc00000  /* top of the PCI MMIO space */
+#define ATARI_ISA_IO_BASE   0xffe10000  /* top of the PCI IO space */
+#define ATARI_ISA_MFP_IRQ   8           /* 16 MFP interrupts */
 
 #define ATARI_IDE_BASE      0xfff00000  /* Falcon IDE address and layout */
 #define ATARI_IDE_OFFSET    0x38
 #define ATARI_IDE_STRIDE    0x40
 #define ATARI_IDE_COUNT     2
-
-#define ATARI_FB_REGS_BASE  0xffffc000  /* framebuffer */
-#define ATARI_FB_PAL_BASE   0xffffc400
-#define ATARI_FB_IRQ_LEVEL  3           /* VBL shim */
 
 #define GF_TTY_BASE         0xffffb400  /* logging pipe */
 #define VIRT_CTRL_BASE      0xffffb500  /* system control */
@@ -136,9 +140,30 @@ static void create_pci(DeviceState *irqc)
      * Wire all PCI interrupts to level 5.
      */
     for (i = 0; i < GPEX_NUM_IRQS; i++) {
-        sysbus_connect_irq(SYS_BUS_DEVICE(dev), i, qdev_get_gpio_in(irqc, ATARI_MFP_IRQ_LEVEL - 1));
-        gpex_set_irq_num(GPEX_HOST(dev), i, 5); /* not clear what this gets used for... */
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), i, qdev_get_gpio_in(irqc, ATARI_PCI_IRQ_LEVEL - 1));
+        gpex_set_irq_num(GPEX_HOST(dev), i, 5); /* set the IRQ register in config space for completeness */
     }
+}
+
+static void create_isa(DeviceState *mfp)
+{
+    MemoryRegion *isa_mem = g_new(MemoryRegion, 1);
+    MemoryRegion *isa_io = g_new(MemoryRegion, 1);
+    ISABus *isa_bus;
+    static qemu_irq isa_irqs[ISA_NUM_IRQS];
+    int i;
+
+    memory_region_init(isa_mem, NULL, "isa-mem", 0x100000);
+    memory_region_init(isa_io, NULL, "isa-io", 0x10000);
+    memory_region_add_subregion(get_system_memory(), ATARI_ISA_MMIO_BASE, isa_mem);
+    memory_region_add_subregion(get_system_memory(), ATARI_ISA_IO_BASE, isa_io);
+    isa_bus = isa_bus_new(NULL, isa_mem, isa_io, &error_abort);
+
+    /* isa wants an array of 16 qemu_irqs, so make one */
+    for (i = 0; i < ISA_NUM_IRQS; i++) {
+        isa_irqs[i] = qdev_get_gpio_in(mfp, ATARI_ISA_MFP_IRQ + i);
+    }
+    isa_bus_register_input_irqs(isa_bus, &isa_irqs[0]);
 }
 
 static void virt_init(MachineState *machine)
@@ -188,6 +213,9 @@ static void virt_init(MachineState *machine)
 
     /* IKBD */
     sysbus_create_simple(TYPE_ATARISTKBD, ATARI_IKBD_BASE, qdev_get_gpio_in(mfp_dev, ATARI_IKBD_MFP_IRQ));
+
+    /* ISA bus */
+    create_isa(mfp_dev);
 
     /* IDE */
     io_base = ATARI_IDE_BASE;
