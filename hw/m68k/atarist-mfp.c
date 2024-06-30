@@ -231,10 +231,10 @@ static void mfp_gpip_irq(void *opaque, int irq, int level)
         mask_a |= IRA_GPIP_7;
         break;
     case 8 ... 15:
-        mask_c |= (irq - 8);
+        mask_c |= (1 << (irq - 8));
         break;
     case 16 ... 23:
-        mask_d |= (irq - 16);
+        mask_d |= (1 << (irq - 16));
         break;
     }
     if (level) {

@@ -11,10 +11,7 @@
  *
  * - atarifb.c - more plane formats, resolutions, shared memory operation
  * - work out how to deal with less machine RAM
- * - map MMIO ranges for emulation
- * - map the MMIO-IDE to match the Atari mapping (shift = 2?)
  * - what's with the UI hangs (disk wait?) when -serial mon:stdio is not specified?
- * - why does clicking into the SDL window the first time leave you dragging a rubber band?
  */
 
 #include "qemu/osdep.h"
@@ -53,7 +50,8 @@
  * 0xffff_b500-0xffff_b50f  Virt control device
  * 0xffff_c000-0xffff_c3ff  Framebuffer control registers
  * 0xffff_c400-0xffff_c4ff  Framebuffer palette registers
- * 0xffff_fc00-0xffff_ffc3  IKBD
+ * 0xffff_fa00-0xffff_fa40  MFP
+ * 0xffff_fc00-0xffff_fc03  IKBD
  */
 
 #define ATARI_ROM_BASE      0x00e00000
