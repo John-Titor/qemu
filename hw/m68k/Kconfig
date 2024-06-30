@@ -7,6 +7,7 @@ config AN5206
 
 config ATARIST
     bool
+    default y
     imply PCI_DEVICES
     select M68K_IRQC
     select VIRT_CTRL
